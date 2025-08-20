@@ -204,18 +204,10 @@ class SSHManager {
     // Criar estrutura completa do usuário (streaming + wowza)
     async createCompleteUserStructure(serverId, userLogin, userConfig) {
         try {
-            const WowzaConfigManager = require('./WowzaConfigManager');
             console.log(`🏗️ Criando estrutura completa para usuário: ${userLogin}`);
 
-            // 1. Criar estrutura de streaming
+            // Criar apenas estrutura básica de streaming
             await this.createUserDirectory(serverId, userLogin);
-
-            // 2. Criar estrutura de configuração do Wowza
-            const wowzaResult = await WowzaConfigManager.createUserWowzaStructure(serverId, userLogin, userConfig);
-            
-            if (!wowzaResult.success) {
-                throw new Error(`Erro ao criar configuração Wowza: ${wowzaResult.error}`);
-            }
 
             console.log(`✅ Estrutura completa criada para ${userLogin}`);
             return { success: true };
@@ -229,25 +221,19 @@ class SSHManager {
     // Verificar estrutura completa do usuário
     async checkCompleteUserStructure(serverId, userLogin) {
         try {
-            const WowzaConfigManager = require('./WowzaConfigManager');
             // Verificar estrutura de streaming
             const streamingPath = `/home/streaming/${userLogin}`;
             const streamingExists = await this.checkDirectoryExists(serverId, streamingPath);
 
-            // Verificar estrutura do Wowza
-            const wowzaStructure = await WowzaConfigManager.checkUserStructure(serverId, userLogin);
-
             return {
                 streaming_directory: streamingExists,
-                wowza_structure: wowzaStructure,
-                complete: streamingExists && wowzaStructure.complete
+                complete: streamingExists
             };
 
         } catch (error) {
             console.error(`Erro ao verificar estrutura completa do usuário ${userLogin}:`, error);
             return {
                 streaming_directory: false,
-                wowza_structure: { complete: false },
                 complete: false,
                 error: error.message
             };

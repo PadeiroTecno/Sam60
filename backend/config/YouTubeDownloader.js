@@ -258,8 +258,7 @@ class YouTubeDownloader {
                         await SSHManager.createCompleteUserStructure(serverId, userLogin, {
                             bitrate: 2500,
                             espectadores: 100,
-                            status_gravando: 'nao',
-                            senha_transmissao: 'teste2025'
+                            status_gravando: 'nao'
                         });
                         
                         await SSHManager.createUserFolder(serverId, userLogin, folderName);

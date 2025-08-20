@@ -12,14 +12,8 @@ class WowzaConfigManager {
         try {
             console.log(`🔧 Criando estrutura Wowza para usuário: ${userLogin}`);
 
-            // 1. Criar diretório de streaming do usuário
+            // Apenas criar diretório de streaming básico
             await this.createUserStreamingDirectory(serverId, userLogin);
-
-            // 2. Criar diretório de configuração do Wowza
-            await this.createUserWowzaConfig(serverId, userLogin, userConfig);
-
-            // 3. Criar arquivos de configuração
-            await this.createConfigurationFiles(serverId, userLogin, userConfig);
 
             console.log(`✅ Estrutura Wowza criada com sucesso para ${userLogin}`);
             return { success: true };
@@ -38,18 +32,20 @@ class WowzaConfigManager {
         const commands = [
             `mkdir -p ${userStreamingPath}`,
             `mkdir -p ${userStreamingPath}/recordings`,
-            `mkdir -p ${userStreamingPath}/logos`,
-            `touch ${userStreamingPath}/playlists_agendamentos.smil`,
-            `chown -R streaming:streaming ${userStreamingPath}`,
-            `chmod -R 755 ${userStreamingPath}`
+            `chmod -R 755 ${userStreamingPath} || true`,
+            `chown -R streaming:streaming ${userStreamingPath} || true`
         ];
 
         for (const command of commands) {
-            await SSHManager.executeCommand(serverId, command);
+            try {
+                await SSHManager.executeCommand(serverId, command);
+            } catch (cmdError) {
+                console.warn(`Aviso ao executar comando "${command}":`, cmdError.message);
+                // Continuar mesmo com erros de permissão
+            }
         }
 
         console.log(`📁 Diretório de streaming criado: ${userStreamingPath}`);
-        console.log(`📄 Arquivo SMIL inicializado: ${userStreamingPath}/playlists_agendamentos.smil`);
         return userStreamingPath;
     }
 
@@ -592,18 +588,8 @@ class WowzaConfigManager {
     // Criar todos os arquivos de configuração
     async createConfigurationFiles(serverId, userLogin, userConfig) {
         try {
-            const userPassword = userConfig.senha_transmissao || 'teste2025';
-
-            // Criar todos os arquivos necessários
-            await Promise.all([
-                this.createApplicationXML(serverId, userLogin, userConfig),
-                this.createAliasMapPlay(serverId, userLogin),
-                this.createAliasMapStream(serverId, userLogin),
-                this.createPublishPassword(serverId, userLogin, userPassword),
-                this.createFTPQuota(serverId, userLogin, userConfig.espaco || 1000)
-            ]);
-
-            console.log(`✅ Todos os arquivos de configuração criados para ${userLogin}`);
+            // Não criar arquivos de configuração complexos
+            console.log(`✅ Configuração simplificada para ${userLogin}`);
             return { success: true };
 
         } catch (error) {

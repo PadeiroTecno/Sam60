@@ -110,8 +110,7 @@ router.post('/', authMiddleware, upload.single('logo'), async (req, res) => {
       await SSHManager.createCompleteUserStructure(serverId, userLogin, {
         bitrate: req.user.bitrate || 2500,
         espectadores: req.user.espectadores || 100,
-        status_gravando: 'nao',
-        senha_transmissao: 'teste2025'
+        status_gravando: 'nao'
       });
       
       // Criar pasta de logos na nova estrutura

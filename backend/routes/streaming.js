@@ -54,8 +54,7 @@ router.get('/obs-config', authMiddleware, async (req, res) => {
       await SSHManager.createCompleteUserStructure(serverId, userLogin, {
         bitrate: userConfig.bitrate || 2500,
         espectadores: userConfig.espectadores || 100,
-        status_gravando: userConfig.status_gravando || 'nao',
-        senha_transmissao: 'teste2025'
+        status_gravando: userConfig.status_gravando || 'nao'
       });
       console.log(`✅ Diretório do usuário ${userLogin} verificado no servidor ${serverId}`);
     } catch (dirError) {

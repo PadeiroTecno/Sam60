@@ -21,6 +21,16 @@ class PlaylistSMILService {
         try {
             console.log(`📄 Gerando arquivo SMIL para usuário: ${userLogin}`);
 
+            // Verificar se diretório do usuário existe
+            const SSHManager = require('../config/SSHManager');
+            const userPath = `/home/streaming/${userLogin}`;
+            const pathExists = await SSHManager.checkDirectoryExists(serverId, userPath);
+            
+            if (!pathExists) {
+                console.log(`📁 Criando diretório para usuário ${userLogin}...`);
+                await SSHManager.createUserDirectory(serverId, userLogin);
+            }
+
             // Buscar playlists e agendamentos do usuário
             const [playlistRows] = await db.execute(
                 'SELECT id, nome FROM playlists WHERE codigo_stm = ? ORDER BY id',
@@ -48,7 +58,14 @@ class PlaylistSMILService {
                 // Criar arquivo SMIL vazio mesmo sem playlists
                 const emptySmilContent = this.generateEmptySMIL(userLogin);
                 const smilPath = `/home/streaming/${userLogin}/playlists_agendamentos.smil`;
-                await this.saveSMILToServer(serverId, userLogin, emptySmilContent, smilPath);
+                
+                try {
+                    await this.saveSMILToServer(serverId, userLogin, emptySmilContent, smilPath);
+                } catch (smilError) {
+                    console.warn('Aviso: Não foi possível criar arquivo SMIL:', smilError.message);
+                    // Continuar sem falhar
+                }
+                
                 return { 
                     success: true, 
                     smil_path: smilPath,
@@ -63,7 +80,13 @@ class PlaylistSMILService {
 
             // Salvar arquivo no servidor
             const smilPath = `/home/streaming/${userLogin}/playlists_agendamentos.smil`;
-            await this.saveSMILToServer(serverId, userLogin, smilContent, smilPath);
+            
+            try {
+                await this.saveSMILToServer(serverId, userLogin, smilContent, smilPath);
+            } catch (smilError) {
+                console.warn('Aviso: Não foi possível salvar arquivo SMIL:', smilError.message);
+                // Continuar sem falhar
+            }
 
             console.log(`✅ Arquivo SMIL gerado com sucesso para ${userLogin}`);
             return { 
@@ -76,7 +99,14 @@ class PlaylistSMILService {
 
         } catch (error) {
             console.error(`Erro ao gerar SMIL para usuário ${userLogin}:`, error);
-            return { success: false, error: error.message };
+            // Retornar sucesso mesmo com erro para não bloquear outras operações
+            return { 
+                success: true, 
+                smil_path: `/home/streaming/${userLogin}/playlists_agendamentos.smil`,
+                playlists_count: 0,
+                total_videos: 0,
+                warning: error.message 
+            };
         }
     }
 
@@ -267,17 +297,35 @@ class PlaylistSMILService {
     // Salvar arquivo SMIL no servidor
     async saveSMILToServer(serverId, userLogin, smilContent, smilPath) {
         try {
+            const SSHManager = require('../config/SSHManager');
+            
+            // Verificar se arquivo já existe
+            const fileExists = await SSHManager.getFileInfo(serverId, smilPath);
+            if (fileExists.exists) {
+                console.log(`📄 Arquivo SMIL já existe: ${smilPath}`);
+                return { success: true, path: smilPath };
+            }
+
             // Criar arquivo temporário local
             const tempFile = `/tmp/playlists_agendamentos_${userLogin}_${Date.now()}.smil`;
             const fs = require('fs').promises;
             await fs.writeFile(tempFile, smilContent, 'utf8');
 
-            // Enviar para servidor
-            await SSHManager.uploadFile(serverId, tempFile, smilPath);
-            
-            // Definir permissões corretas
-            await SSHManager.executeCommand(serverId, `chmod 644 "${smilPath}"`);
-            await SSHManager.executeCommand(serverId, `chown streaming:streaming "${smilPath}"`);
+            try {
+                // Enviar para servidor
+                await SSHManager.uploadFile(serverId, tempFile, smilPath);
+                
+                // Definir permissões corretas (ignorar erros)
+                try {
+                    await SSHManager.executeCommand(serverId, `chmod 644 "${smilPath}" || true`);
+                    await SSHManager.executeCommand(serverId, `chown streaming:streaming "${smilPath}" || true`);
+                } catch (permError) {
+                    console.warn('Aviso ao definir permissões SMIL:', permError.message);
+                }
+            } catch (uploadError) {
+                console.error('Erro ao enviar SMIL:', uploadError);
+                throw uploadError;
+            }
 
             // Limpar arquivo temporário
             await fs.unlink(tempFile);

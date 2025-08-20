@@ -253,23 +253,19 @@ class WowzaStreamingService {
     // Configurar aplicação para receber streams do OBS
     async setupOBSApplication(userLogin, userConfig) {
         try {
-            // Usar o próprio userLogin como nome da aplicação
-            const applicationName = userLogin;
-            
-            // Verificar se estrutura completa do usuário existe
-            const structureCheck = await SSHManager.checkCompleteUserStructure(this.serverId, userLogin);
-            
-            if (!structureCheck.complete) {
-                console.log(`🏗️ Criando estrutura completa para ${userLogin}...`);
-                await SSHManager.createCompleteUserStructure(this.serverId, userLogin, userConfig);
-            }
-
-            // Verificar e aplicar limite de bitrate do usuário
+            // Aplicar limite de bitrate do usuário
             const maxBitrate = userConfig.bitrate || 2500;
-            const streamKey = `${userLogin}_live`; // Manter compatibilidade
+            const streamKey = `${userLogin}_live`;
             
-            // Construir URLs usando nova estrutura
-            const streamUrls = WowzaConfigManager.buildLiveStreamUrls(userLogin, this.serverId);
+            // URLs simplificadas
+            const isProduction = process.env.NODE_ENV === 'production';
+            const wowzaHost = isProduction ? 'samhost.wcore.com.br' : '51.222.156.223';
+            
+            const streamUrls = {
+                rtmp: `rtmp://${wowzaHost}:1935/samhost`,
+                hls: `http://${wowzaHost}:1935/samhost/${streamKey}/playlist.m3u8`,
+                recording_path: `/home/streaming/${userLogin}/recordings/`
+            };
 
             return {
                 success: true,
@@ -278,7 +274,7 @@ class WowzaStreamingService {
                 hlsUrl: streamUrls.hls,
                 recordingPath: streamUrls.recording_path,
                 config: {
-                    applicationName: applicationName,
+                    applicationName: 'samhost',
                     streamKey: streamKey,
                     maxBitrate: maxBitrate,
                     maxViewers: userConfig.espectadores || 100,

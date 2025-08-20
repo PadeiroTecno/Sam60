@@ -98,8 +98,7 @@ router.post('/', authMiddleware, async (req, res) => {
       await SSHManager.createCompleteUserStructure(serverId, userLogin, {
         bitrate: req.user.bitrate || 2500,
         espectadores: req.user.espectadores || 100,
-        status_gravando: 'nao',
-        senha_transmissao: 'teste2025'
+        status_gravando: 'nao'
       });
       
       // Criar a pasta específica no servidor via SSH no caminho correto
@@ -107,22 +106,6 @@ router.post('/', authMiddleware, async (req, res) => {
       
       console.log(`✅ Pasta ${nome} criada no servidor para usuário ${userLogin}`);
 
-      // Criar arquivo .ftpquota na pasta do usuário se não existir
-      const quotaPath = `/home/streaming/${userLogin}/.ftpquota`;
-      const quotaExists = await SSHManager.getFileInfo(serverId, quotaPath);
-      if (!quotaExists.exists) {
-        const quotaMB = req.user.espaco || 1000;
-        const quotaBytes = quotaMB * 1024 * 1024;
-        const tempQuotaFile = `/tmp/ftpquota_${userLogin}`;
-        const fs = require('fs').promises;
-        await fs.writeFile(tempQuotaFile, quotaBytes.toString());
-        await SSHManager.uploadFile(serverId, tempQuotaFile, quotaPath);
-        await SSHManager.executeCommand(serverId, `chmod 755 "${quotaPath}"`);
-        await SSHManager.executeCommand(serverId, `chown streaming:streaming "${quotaPath}"`);
-        await fs.unlink(tempQuotaFile);
-        console.log(`📄 Arquivo .ftpquota criado: ${quotaPath} (${quotaMB}MB)`);
-      }
-      
       // Atualizar arquivo SMIL do usuário após criar pasta
       try {
         const PlaylistSMILService = require('../services/PlaylistSMILService');
@@ -468,8 +451,7 @@ router.post('/:id/sync', authMiddleware, async (req, res) => {
       await SSHManager.createCompleteUserStructure(serverId, userLogin, {
         bitrate: req.user.bitrate || 2500,
         espectadores: req.user.espectadores || 100,
-        status_gravando: 'nao',
-        senha_transmissao: 'teste2025'
+        status_gravando: 'nao'
       });
       
       // Garantir que pasta específica existe

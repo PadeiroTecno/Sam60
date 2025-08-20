@@ -83,8 +83,7 @@ router.post('/create', authMiddleware, async (req, res) => {
         const userConfig = {
             bitrate: req.user.bitrate || 2500,
             espectadores: req.user.espectadores || 100,
-            status_gravando: 'nao',
-            senha_transmissao: 'teste2025'
+            status_gravando: 'nao'
         };
 
         await SSHManager.createCompleteUserStructure(serverId, userLogin, userConfig);
