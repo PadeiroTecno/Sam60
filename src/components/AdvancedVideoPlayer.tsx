@@ -905,8 +905,14 @@ const AdvancedVideoPlayer: React.FC<AdvancedVideoPlayerProps> = ({
 
       {/* Título do vídeo */}
       {title && (
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pointer-events-none">
           <h3 className="text-white text-lg font-semibold truncate">{title}</h3>
+          {streamStats && (
+            <div className="text-white text-sm opacity-80 mt-1">
+              {streamStats.quality && <span>{streamStats.quality}</span>}
+              {streamStats.bitrate && <span> • {streamStats.bitrate} kbps</span>}
+            </div>
+          )}
         </div>
       )}
     </div>

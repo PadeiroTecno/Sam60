@@ -32,6 +32,9 @@ router.get('/videos', authMiddleware, async (req, res) => {
         v.tamanho_arquivo as tamanho,
         v.bitrate_video,
         v.formato_original,
+        v.codec_video,
+        v.largura,
+        v.altura,
         v.is_mp4,
         v.compativel,
         v.pasta,
@@ -44,10 +47,34 @@ router.get('/videos', authMiddleware, async (req, res) => {
       params
     );
 
+    // Função para verificar compatibilidade de codec
+    const isCompatibleCodec = (codecName) => {
+      const compatibleCodecs = ['h264', 'h265', 'hevc'];
+      return compatibleCodecs.includes(codecName?.toLowerCase());
+    };
     const videos = rows.map(video => {
       const currentBitrate = video.bitrate_video || 0;
       const userBitrateLimit = video.user_bitrate_limit || 2500;
-      const needsConversion = !video.is_mp4 || currentBitrate > userBitrateLimit;
+      
+      // Verificar compatibilidade completa
+      const isMP4 = video.is_mp4 === 1;
+      const codecCompatible = isCompatibleCodec(video.codec_video);
+      const bitrateExceedsLimit = currentBitrate > userBitrateLimit;
+      
+      // Determinar se precisa de conversão
+      const needsConversion = !isMP4 || !codecCompatible;
+      
+      // Status de compatibilidade
+      let compatibilityStatus = 'compatible';
+      let compatibilityMessage = 'Compatível';
+      
+      if (needsConversion) {
+        compatibilityStatus = 'needs_conversion';
+        compatibilityMessage = 'Necessário Conversão';
+      } else if (bitrateExceedsLimit) {
+        compatibilityStatus = 'bitrate_high';
+        compatibilityMessage = 'Bitrate Alto';
+      }
 
       // Qualidades disponíveis baseadas no limite do usuário
       const availableQualities = [
@@ -101,14 +128,19 @@ router.get('/videos', authMiddleware, async (req, res) => {
         tamanho: video.tamanho,
         bitrate_video: video.bitrate_video,
         formato_original: video.formato_original,
+        codec_video: video.codec_video,
+        largura: video.largura,
+        altura: video.altura,
         is_mp4: video.is_mp4 === 1,
         current_bitrate: currentBitrate,
         bitrate_original: currentBitrate,
         user_bitrate_limit: userBitrateLimit,
         available_qualities: availableQualities,
-        can_use_current: video.is_mp4 === 1 && currentBitrate <= userBitrateLimit,
+        can_use_current: isMP4 && codecCompatible && !bitrateExceedsLimit,
         needs_conversion: needsConversion,
-        conversion_status: video.compativel === 'sim' ? 'disponivel' : 'nao_iniciada',
+        compatibility_status: compatibilityStatus,
+        compatibility_message: compatibilityMessage,
+        conversion_status: video.compativel === 'sim' && !needsConversion ? 'disponivel' : 'nao_iniciada',
         folder_name: video.folder_name
       };
     });

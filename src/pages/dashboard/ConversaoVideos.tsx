@@ -12,6 +12,9 @@ interface VideoConversion {
   tamanho?: number;
   bitrate_video?: number;
   formato_original?: string;
+  codec_video?: string;
+  largura?: number;
+  altura?: number;
   status_conversao?: 'nao_iniciada' | 'em_andamento' | 'concluida' | 'erro';
   path_video_mp4?: string;
   data_conversao?: string;
@@ -29,6 +32,8 @@ interface VideoConversion {
   can_use_current: boolean;
   needs_conversion: boolean;
   conversion_status: string;
+  compatibility_status?: string;
+  compatibility_message?: string;
   qualidade_conversao?: string;
 }
 
@@ -552,9 +557,14 @@ const ConversaoVideos: React.FC = () => {
                     
                     <td className="py-3 px-4 text-center">
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        video.is_mp4 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                        video.is_mp4 && video.compatibility_status !== 'needs_conversion' ? 
+                          'bg-green-100 text-green-800' : 
+                          video.compatibility_status === 'needs_conversion' ? 
+                            'bg-red-100 text-red-800' : 
+                            'bg-yellow-100 text-yellow-800'
                       }`}>
                         {video.formato_original?.toUpperCase() || 'N/A'}
+                        {video.codec_video && ` (${video.codec_video.toUpperCase()})`}
                       </span>
                     </td>
                     
@@ -580,8 +590,15 @@ const ConversaoVideos: React.FC = () => {
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center space-x-2">
                         {getStatusIcon(video)}
-                        <span className={`text-sm font-medium ${getStatusColor(video)}`}>
-                          {getStatusText(video)}
+                        <div className="flex flex-col items-center">
+                          <span className={`text-sm font-medium ${getStatusColor(video)}`}>
+                            {getStatusText(video)}
+                          </span>
+                          {video.compatibility_status === 'needs_conversion' && (
+                            <span className="text-xs text-red-600 font-medium">
+                              Necessário Conversão
+                            </span>
+                          )}
                         </span>
                       </div>
                     </td>
@@ -650,7 +667,12 @@ const ConversaoVideos: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-600">Formato:</span>
-                    <span className="ml-2 font-medium">{selectedVideo.formato_original?.toUpperCase() || 'N/A'}</span>
+                    <span className={`ml-2 font-medium ${
+                      selectedVideo.compatibility_status === 'needs_conversion' ? 'text-red-600' : 'text-gray-900'
+                    }`}>
+                      {selectedVideo.formato_original?.toUpperCase() || 'N/A'}
+                      {selectedVideo.codec_video && ` (${selectedVideo.codec_video.toUpperCase()})`}
+                    </span>
                   </div>
                   <div>
                     <span className="text-gray-600">Bitrate:</span>
@@ -661,18 +683,31 @@ const ConversaoVideos: React.FC = () => {
                     </span>
                   </div>
                   <div>
+                    <span className="text-gray-600">Resolução:</span>
+                    <span className="ml-2 font-medium">
+                      {selectedVideo.largura && selectedVideo.altura ? 
+                        `${selectedVideo.largura}x${selectedVideo.altura}` : 'N/A'}
+                    </span>
+                  </div>
+                  <div>
                     <span className="text-gray-600">Tamanho:</span>
                     <span className="ml-2 font-medium">
                       {selectedVideo.tamanho ? formatFileSize(selectedVideo.tamanho) : 'N/A'}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-gray-600">Duração:</span>
-                    <span className="ml-2 font-medium">
-                      {selectedVideo.duracao ? formatDuration(selectedVideo.duracao) : 'N/A'}
-                    </span>
-                  </div>
                 </div>
+                
+                {selectedVideo.compatibility_status === 'needs_conversion' && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+                    <div className="flex items-center">
+                      <AlertCircle className="h-4 w-4 text-red-600 mr-2" />
+                      <span className="text-red-800 font-medium">Formato Incompatível</span>
+                    </div>
+                    <p className="text-red-700 text-sm mt-1">
+                      Este vídeo precisa ser convertido para MP4 com codec H.264 ou H.265 para funcionar no sistema.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Seleção de qualidade */}
@@ -955,6 +990,9 @@ const ConversaoVideos: React.FC = () => {
             <h3 className="text-blue-900 font-medium mb-2">🎯 Sistema de Conversão Personalizada</h3>
             <ul className="text-blue-800 text-sm space-y-1">
               <li>• <strong>Todos os vídeos</strong> são listados, independente do formato</li>
+              <li>• <strong>Análise automática:</strong> Bitrate, codec e resolução detectados via FFprobe</li>
+              <li>• <strong>Compatibilidade verificada:</strong> Apenas MP4 + H.264/H.265 são aceitos</li>
+              <li>• <strong>Status visual:</strong> Verde (compatível), Vermelho (necessário conversão), Amarelo (bitrate alto)</li>
               <li>• <strong>Bitrate personalizado:</strong> Escolha exatamente o kbps que deseja (ex: Full HD com 1000 kbps)</li>
               <li>• <strong>Resolução independente:</strong> Combine qualquer resolução com qualquer bitrate</li>
               <li>• <strong>Otimização inteligente:</strong> Mantenha Full HD com bitrate baixo para economizar espaço</li>

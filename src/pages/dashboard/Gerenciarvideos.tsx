@@ -13,13 +13,20 @@ interface Video {
   tamanho?: number;
   bitrate_video?: number;
   formato_original?: string;
+  codec_video?: string;
   is_mp4?: boolean;
   compativel?: string;
+  largura?: number;
+  altura?: number;
   folder?: string;
   user?: string;
   user_bitrate_limit?: number;
   bitrate_exceeds_limit?: boolean;
-  format_incompatible?: boolean;
+  needs_conversion?: boolean;
+  compatibility_status?: string;
+  compatibility_message?: string;
+  codec_compatible?: boolean;
+  format_compatible?: boolean;
 }
 
 interface Folder {
@@ -765,14 +772,19 @@ const GerenciarVideos: React.FC = () => {
 
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center space-x-1">
-                          {video.is_mp4 && !video.bitrate_exceeds_limit ? (
+                          {video.compatibility_status === 'compatible' ? (
                             <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : video.compatibility_status === 'needs_conversion' ? (
+                            <AlertCircle className="h-4 w-4 text-red-600" />
                           ) : (
                             <AlertCircle className="h-4 w-4 text-yellow-600" />
                           )}
-                          <span className={`text-xs ${video.is_mp4 && !video.bitrate_exceeds_limit ? 'text-green-600' : 'text-yellow-600'
+                          <span className={`text-xs font-medium ${
+                            video.compatibility_status === 'compatible' ? 'text-green-600' :
+                            video.compatibility_status === 'needs_conversion' ? 'text-red-600' :
+                            'text-yellow-600'
                             }`}>
-                            {video.is_mp4 && !video.bitrate_exceeds_limit ? 'Otimizado' : 'Pode otimizar'}
+                            {video.compatibility_message || 'Verificando...'}
                           </span>
                         </div>
                       </td>
@@ -981,13 +993,20 @@ const GerenciarVideos: React.FC = () => {
             <div className="absolute top-4 left-4 z-20 bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg">
               <h3 className="font-medium">{currentVideo.nome}</h3>
               <p className="text-xs opacity-80">
-                {currentVideo.formato_original?.toUpperCase()} •
-                {currentVideo.bitrate_video} kbps •
+                {currentVideo.formato_original?.toUpperCase()} • 
+                {currentVideo.codec_video?.toUpperCase()} • 
+                {currentVideo.bitrate_video || 0} kbps •
+                {currentVideo.largura}x{currentVideo.altura} •
                 {currentVideo.duracao ? formatDuration(currentVideo.duracao) : 'N/A'}
               </p>
               <p className="text-xs opacity-60">
                 Servidor: Wowza (51.222.156.223)
               </p>
+              {currentVideo.needs_conversion && (
+                <p className="text-xs text-red-400 font-medium">
+                  ⚠️ Necessário Conversão
+                </p>
+              )}
             </div>
 
             {/* Player HTML5 com URL direta do Wowza */}
@@ -1006,7 +1025,7 @@ const GerenciarVideos: React.FC = () => {
                 }}
                 streamStats={{
                   bitrate: currentVideo.bitrate_video,
-                  quality: `${currentVideo.formato_original?.toUpperCase()} • ${formatFileSize(currentVideo.tamanho || 0)}`
+                  quality: `${currentVideo.formato_original?.toUpperCase()} • ${currentVideo.codec_video?.toUpperCase()} • ${formatFileSize(currentVideo.tamanho || 0)}`
                 }}
                 socialSharing={{
                   enabled: false,
@@ -1037,11 +1056,14 @@ const GerenciarVideos: React.FC = () => {
             <h3 className="text-green-900 font-medium mb-2">🎯 Sistema Otimizado com Wowza</h3>
             <ul className="text-green-800 text-sm space-y-1">
               <li>• <strong>Vídeos servidos diretamente do Wowza:</strong> Melhor performance e qualidade</li>
+              <li>• <strong>Análise automática:</strong> Bitrate, codec e resolução detectados automaticamente</li>
+              <li>• <strong>Compatibilidade verificada:</strong> Apenas MP4 com H.264/H.265 são compatíveis</li>
+              <li>• <strong>Status visual:</strong> Verde (compatível), Vermelho (necessário conversão), Amarelo (bitrate alto)</li>
               <li>• <strong>URLs diretas:</strong> Acesso direto aos arquivos MP4 no servidor</li>
               <li>• <strong>Gerenciamento de pastas:</strong> Criação, edição e exclusão sincronizada com servidor</li>
               <li>• <strong>Sincronização automática:</strong> Pastas e vídeos sempre em sincronia</li>
               <li>• <strong>Monitoramento de espaço:</strong> Controle em tempo real do uso de armazenamento</li>
-              <li>• <strong>Conversão automática:</strong> Arquivos não-MP4 são convertidos automaticamente</li>
+              <li>• <strong>Detecção de incompatibilidade:</strong> Arquivos que precisam de conversão são identificados</li>
               <li>• <strong>Servidor Wowza:</strong> 51.222.156.223 (porta 6980 para VOD, 1935 para HLS)</li>
             </ul>
           </div>

@@ -31,6 +31,20 @@ async function testConnection() {
   try {
     const connection = await pool.getConnection();
     console.log('✅ Conectado ao MySQL com sucesso!');
+    
+    // Verificar se colunas necessárias existem na tabela videos
+    try {
+      await connection.execute(`
+        ALTER TABLE videos 
+        ADD COLUMN IF NOT EXISTS codec_video VARCHAR(50) DEFAULT 'unknown',
+        ADD COLUMN IF NOT EXISTS largura INT DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS altura INT DEFAULT 0
+      `);
+      console.log('✅ Colunas da tabela videos verificadas/criadas');
+    } catch (alterError) {
+      console.warn('⚠️ Aviso ao verificar colunas:', alterError.message);
+    }
+    
     connection.release();
     return true;
   } catch (error) {

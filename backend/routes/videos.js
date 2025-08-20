@@ -6,6 +6,7 @@ const db = require('../config/database');
 const authMiddleware = require('../middlewares/authMiddleware');
 const SSHManager = require('../config/SSHManager');
 const wowzaService = require('../config/WowzaStreamingService');
+const { spawn } = require('child_process');
 
 const router = express.Router();
 
@@ -59,6 +60,59 @@ const upload = multer({
   }
 });
 
+// Função para obter informações do vídeo via ffprobe
+const getVideoInfo = async (filePath) => {
+  return new Promise((resolve, reject) => {
+    const ffprobe = spawn('ffprobe', [
+      '-v', 'quiet',
+      '-print_format', 'json',
+      '-show_format',
+      '-show_streams',
+      filePath
+    ]);
+
+    let stdout = '';
+    let stderr = '';
+
+    ffprobe.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    ffprobe.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    ffprobe.on('close', (code) => {
+      if (code === 0 && stdout) {
+        try {
+          const info = JSON.parse(stdout);
+          resolve(info);
+        } catch (parseError) {
+          reject(new Error('Erro ao analisar informações do vídeo'));
+        }
+      } else {
+        reject(new Error('Erro ao obter informações do vídeo'));
+      }
+    });
+
+    ffprobe.on('error', (error) => {
+      reject(error);
+    });
+  });
+};
+
+// Função para verificar se codec é compatível
+const isCompatibleCodec = (codecName) => {
+  const compatibleCodecs = ['h264', 'h265', 'hevc'];
+  return compatibleCodecs.includes(codecName?.toLowerCase());
+};
+
+// Função para verificar se formato é compatível
+const isCompatibleFormat = (formatName, extension) => {
+  const compatibleFormats = ['mp4'];
+  return compatibleFormats.includes(extension?.toLowerCase()?.replace('.', ''));
+};
+
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -90,8 +144,11 @@ router.get('/', authMiddleware, async (req, res) => {
         tamanho_arquivo as tamanho,
         bitrate_video,
         formato_original,
+        codec_video,
         is_mp4,
-        compativel
+        compativel,
+        largura,
+        altura
        FROM videos 
        WHERE codigo_cliente = ? AND pasta = ?
        ORDER BY id DESC`,
@@ -134,8 +191,26 @@ router.get('/', authMiddleware, async (req, res) => {
       const currentBitrate = video.bitrate_video || 0;
       const bitrateExceedsLimit = currentBitrate > userBitrateLimit;
       
-      // Verificar se formato é incompatível (não é MP4)
-      const formatIncompatible = !video.is_mp4 || video.is_mp4 === 0;
+      // Verificar compatibilidade de formato e codec
+      const fileExtension = path.extname(video.nome).toLowerCase();
+      const isMP4 = video.is_mp4 === 1;
+      const codecCompatible = isCompatibleCodec(video.codec_video);
+      const formatCompatible = isCompatibleFormat(video.formato_original, fileExtension);
+      
+      // Determinar se precisa de conversão
+      const needsConversion = !isMP4 || !codecCompatible || !formatCompatible;
+      
+      // Status de compatibilidade
+      let compatibilityStatus = 'compatible';
+      let compatibilityMessage = 'Compatível';
+      
+      if (needsConversion) {
+        compatibilityStatus = 'needs_conversion';
+        compatibilityMessage = 'Necessário Conversão';
+      } else if (bitrateExceedsLimit) {
+        compatibilityStatus = 'bitrate_high';
+        compatibilityMessage = 'Bitrate Alto';
+      }
       
       return {
         id: video.id,
@@ -145,13 +220,20 @@ router.get('/', authMiddleware, async (req, res) => {
         tamanho: video.tamanho,
         bitrate_video: video.bitrate_video,
         formato_original: video.formato_original,
+        codec_video: video.codec_video,
         is_mp4: video.is_mp4,
         compativel: video.compativel,
+        largura: video.largura,
+        altura: video.altura,
         folder: folderName,
         user: userLogin,
         user_bitrate_limit: userBitrateLimit,
         bitrate_exceeds_limit: bitrateExceedsLimit,
-        format_incompatible: formatIncompatible
+        needs_conversion: needsConversion,
+        compatibility_status: compatibilityStatus,
+        compatibility_message: compatibilityMessage,
+        codec_compatible: codecCompatible,
+        format_compatible: formatCompatible
       };
     });
 
@@ -192,9 +274,53 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
       });
     }
 
-    const duracao = parseInt(req.body.duracao) || 0;
-    const tamanho = parseInt(req.body.tamanho) || req.file.size;
-    const bitrateVideo = parseInt(req.body.bitrate_video) || 0;
+    // Obter informações reais do vídeo usando ffprobe
+    let videoInfo = null;
+    let duracao = 0;
+    let bitrateVideo = 0;
+    let codecVideo = 'unknown';
+    let largura = 0;
+    let altura = 0;
+    let formatoOriginal = fileExtension.substring(1);
+    
+    try {
+      console.log(`🔍 Analisando vídeo: ${req.file.path}`);
+      videoInfo = await getVideoInfo(req.file.path);
+      
+      if (videoInfo.format) {
+        duracao = Math.floor(parseFloat(videoInfo.format.duration) || 0);
+        bitrateVideo = Math.floor(parseInt(videoInfo.format.bit_rate) / 1000) || 0; // Converter para kbps
+        formatoOriginal = videoInfo.format.format_name || fileExtension.substring(1);
+      }
+      
+      if (videoInfo.streams) {
+        const videoStream = videoInfo.streams.find(s => s.codec_type === 'video');
+        if (videoStream) {
+          codecVideo = videoStream.codec_name || 'unknown';
+          largura = videoStream.width || 0;
+          altura = videoStream.height || 0;
+          
+          // Se não conseguiu bitrate do format, tentar do stream
+          if (!bitrateVideo && videoStream.bit_rate) {
+            bitrateVideo = Math.floor(parseInt(videoStream.bit_rate) / 1000) || 0;
+          }
+        }
+      }
+      
+      console.log(`📊 Informações do vídeo:`, {
+        duracao,
+        bitrateVideo,
+        codecVideo,
+        largura,
+        altura,
+        formatoOriginal
+      });
+    } catch (probeError) {
+      console.warn('⚠️ Não foi possível analisar o vídeo com ffprobe:', probeError.message);
+      // Continuar com valores padrão
+    }
+    
+    const tamanho = req.file.size;
 
     const [userRows] = await db.execute(
       `SELECT 
@@ -258,13 +384,22 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
       // Nome do vídeo para salvar no banco
       const videoTitle = req.file.originalname;
 
+      // Verificar compatibilidade
+      const isMP4 = fileExtension === '.mp4';
+      const codecCompatible = isCompatibleCodec(codecVideo);
+      const formatCompatible = isCompatibleFormat(formatoOriginal, fileExtension);
+      const needsConversion = !isMP4 || !codecCompatible;
+      
+      // Status de compatibilidade
+      let compatibilityStatus = needsConversion ? 'nao' : 'sim';
+
       // Salvar na tabela videos SEM conversão automática
       const [result] = await db.execute(
         `INSERT INTO videos (
           nome, descricao, url, caminho, duracao, tamanho_arquivo,
-          codigo_cliente, pasta, bitrate_video, formato_original,
+          codigo_cliente, pasta, bitrate_video, formato_original, codec_video,
           largura, altura, is_mp4, compativel
-        ) VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?, '1920', '1080', ?, 'sim')`,
+        ) VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           videoTitle,
           relativePath,
@@ -273,12 +408,17 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
           tamanho,
           userId,
           folderId,
-          bitrateVideo, // Usar bitrate real do arquivo
-          fileExtension.substring(1),
-          fileExtension === '.mp4' ? 1 : 0
+          bitrateVideo,
+          formatoOriginal,
+          codecVideo,
+          largura,
+          altura,
+          isMP4 ? 1 : 0,
+          compatibilityStatus
         ]
       );
 
+      // Atualizar espaço usado na pasta
       await db.execute(
         'UPDATE streamings SET espaco_usado = espaco_usado + ? WHERE codigo = ?',
         [spaceMB, folderId]
@@ -297,6 +437,18 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
       // Construir URLs corretas SEM conversão automática
       const finalRelativePath = relativePath;
 
+      // Determinar status de compatibilidade para resposta
+      let statusMessage = 'Vídeo compatível';
+      let statusColor = 'green';
+      
+      if (needsConversion) {
+        statusMessage = 'Necessário Conversão';
+        statusColor = 'red';
+      } else if (bitrateVideo > userBitrateLimit) {
+        statusMessage = 'Bitrate Alto';
+        statusColor = 'yellow';
+      }
+
       res.status(201).json({
         id: result.insertId,
         nome: videoTitle,
@@ -304,10 +456,17 @@ router.post('/upload', authMiddleware, upload.single('video'), async (req, res) 
         path: remotePath,
         originalFile: remotePath,
         bitrate_video: bitrateVideo,
+        codec_video: codecVideo,
         formato_original: fileExtension.substring(1),
+        largura: largura,
+        altura: altura,
         is_mp4: fileExtension === '.mp4',
+        needs_conversion: needsConversion,
+        compatibility_status: statusMessage,
+        compatibility_color: statusColor,
         duracao,
-        tamanho
+        tamanho,
+        space_used_mb: spaceMB
       });
     } catch (uploadError) {
       console.error('Erro durante upload:', uploadError);
@@ -389,14 +548,14 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
     // Buscar dados do vídeo
     const [videoRows] = await db.execute(
-      'SELECT caminho, nome, tamanho_arquivo FROM videos WHERE id = ? AND (codigo_cliente = ? OR codigo_cliente IN (SELECT codigo FROM streamings WHERE codigo_cliente = ?))',
+      'SELECT caminho, nome, tamanho_arquivo, pasta FROM videos WHERE id = ? AND (codigo_cliente = ? OR codigo_cliente IN (SELECT codigo FROM streamings WHERE codigo_cliente = ?))',
       [videoId, userId, userId]
     );
     if (videoRows.length === 0) {
       return res.status(404).json({ error: 'Vídeo não encontrado' });
     }
 
-    const { caminho, tamanho_arquivo } = videoRows[0];
+    const { caminho, tamanho_arquivo, pasta } = videoRows[0];
 
     if (!caminho.includes(`/${userLogin}/`)) {
       return res.status(403).json({ error: 'Acesso negado' });
@@ -447,10 +606,10 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     // Calcular espaço liberado
     const spaceMB = Math.ceil((fileSize) / (1024 * 1024));
     
-    // Atualizar espaço usado na pasta
+    // Atualizar espaço usado na pasta específica
     await db.execute(
       'UPDATE streamings SET espaco_usado = GREATEST(espaco_usado - ?, 0) WHERE codigo = ?',
-      [spaceMB, req.query.folder_id || 1]
+      [spaceMB, pasta]
     );
     
     console.log(`📊 Espaço liberado: ${spaceMB}MB`);
